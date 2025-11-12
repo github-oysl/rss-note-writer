@@ -1,0 +1,19 @@
+[project]
+name = "rss-note-writer"
+version = "0.1.0"
+description = "从 RSS 源获取文章链接并写入笔记应用的工具"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{ name = "Project Maintainer" }]
+dependencies = []
+
+[project.scripts]
+rss-note-writer = "rss_note_writer.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

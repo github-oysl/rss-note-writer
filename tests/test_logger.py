@@ -4,9 +4,7 @@ import os
 import logging
 import tempfile
 from unittest.mock import patch, MagicMock
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from logger import LoggerConfig, ExceptionHandler, setup_application_logging
+from rss_note_writer.logger import LoggerConfig, ExceptionHandler, setup_application_logging
 
 class TestLoggerConfig:
     """

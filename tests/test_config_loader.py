@@ -4,8 +4,7 @@ from dotenv import load_dotenv
 import os
 import json
 
-# 假设 ConfigLoader 类在 config_loader.py 中
-from config_loader import ConfigLoader
+from rss_note_writer.config_loader import ConfigLoader
 
 @pytest.fixture
 def mock_env_file():

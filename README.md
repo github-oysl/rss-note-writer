@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 3. **创建配置文件**
 ```bash
-python rss_note_writer.py --create-config
+python -m rss_note_writer --create-config
 ```
 
 ## 🔧 配置
@@ -94,12 +94,12 @@ LOG_FILE=rss_note_writer.log
 python rss_note_writer.py --create-config
 
 # 运行程序
-python rss_note_writer.py
+python -m rss_note_writer
 ```
 
 ### 命令行参数
 ```bash
-python rss_note_writer.py [选项]
+python -m rss_note_writer [选项]
 
 选项:
   --config-file PATH    RSS 配置文件路径 (默认: config/rss_configs.json)
@@ -113,22 +113,22 @@ python rss_note_writer.py [选项]
 ### 使用示例
 ```bash
 # 基本使用
-python rss_note_writer.py
+python -m rss_note_writer
 
 # 设置 5 秒延迟
-python rss_note_writer.py --delay 5
+python -m rss_note_writer --delay 5
 
 # 启用调试日志
-python rss_note_writer.py --log-level DEBUG
+python -m rss_note_writer --log-level DEBUG
 
 # 输出日志到文件
-python rss_note_writer.py --log-file app.log
+python -m rss_note_writer --log-file app.log
 
 # 使用自定义配置
-python rss_note_writer.py --config-file my_config.json
+python -m rss_note_writer --config-file my_config.json
 
 # 重新创建配置文件
-python rss_note_writer.py --create-config
+python -m rss_note_writer --create-config
 ```
 
 ## 🧪 测试
@@ -142,7 +142,7 @@ python quick_test.py
 ### 完整测试
 ```bash
 # 运行所有测试
-python final_test_runner.py
+python -m pytest tests/ -v
 
 # 运行单元测试
 python -m pytest tests/ -v
@@ -228,7 +228,7 @@ cat .env
 
 #### 启用调试日志
 ```bash
-python rss_note_writer.py --log-level DEBUG
+python -m rss_note_writer --log-level DEBUG
 ```
 
 #### 检查日志文件
@@ -267,13 +267,19 @@ for entry in feed.entries[:3]:
 ### 项目结构
 ```
 rss-note-writer/
-├── rss_note_writer.py      # 主脚本
-├── config_loader.py        # 配置加载器
-├── rss_fetcher.py          # RSS 获取器
-├── api_caller.py           # API 调用器
-├── scheduler.py            # 调度器
-├── logger.py               # 日志系统
-├── requirements.txt        # 依赖列表
+├── pyproject.toml          # 包元数据与控制台脚本入口
+├── requirements.txt        # 运行时依赖
+├── src/
+│  └── rss_note_writer/
+│      ├── __init__.py      # 导出顶层 API
+│      ├── __main__.py      # 支持 `python -m rss_note_writer`
+│      ├── cli.py           # 命令行主入口
+│      ├── config_loader.py # 配置加载器
+│      ├── rss_fetcher.py   # RSS 获取器
+│      ├── api_caller.py    # API 调用器
+│      ├── scheduler.py     # 调度器
+│      ├── logger.py        # 日志系统
+│      └── dedup_store.py   # 去重存储
 ├── tests/                  # 测试目录
 ├── config/                 # 配置文件
 └── docs/                   # 项目文档
@@ -283,12 +289,17 @@ rss-note-writer/
 ```bash
 # 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+source venv/bin/activate  # Mac/Linux
+# venv\Scripts\activate  # Windows
 
-# 安装开发依赖
+# 安装依赖与开发工具
 pip install -r requirements.txt
-pip install pytest pytest-cov  # 测试工具
+pip install pytest pytest-cov
+
+# 可选：本地可执行安装
+pip install -e .
+# 使用控制台脚本运行：
+rss-note-writer --delay 5
 ```
 
 ### 代码规范

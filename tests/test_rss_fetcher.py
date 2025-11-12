@@ -1,9 +1,7 @@
 import pytest
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from rss_fetcher import RssFetcher
+from rss_note_writer.rss_fetcher import RssFetcher
 
 class TestRssFetcher:
     """

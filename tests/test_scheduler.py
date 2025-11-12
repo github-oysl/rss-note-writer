@@ -2,9 +2,7 @@ import pytest
 import sys
 import os
 from unittest.mock import Mock, patch, MagicMock
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scheduler import Scheduler
+from rss_note_writer.scheduler import Scheduler
 
 class TestScheduler:
     """
@@ -40,8 +38,8 @@ class TestScheduler:
             self.scheduler.run(self.test_configs, "")
             mock_error.assert_called_with("缺少 Bearer token")
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_successful_flow(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试成功的完整流程。"""
         # Mock RssFetcher
@@ -66,8 +64,8 @@ class TestScheduler:
         assert mock_fetcher.fetch_links.called
         assert mock_caller.call_api.call_count == 2  # 两个链接
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_with_no_links(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试 RSS 源没有链接的情况。"""
         # Mock RssFetcher 返回空链接
@@ -79,8 +77,8 @@ class TestScheduler:
             self.scheduler.run(self.test_configs[:1], self.test_token)
             mock_warning.assert_called_with("RSS 源没有获取到链接: https://example1.com/rss")
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_with_api_failure(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试 API 调用失败的情况。"""
         # Mock RssFetcher
@@ -100,8 +98,8 @@ class TestScheduler:
             self.scheduler.run(self.test_configs[:1], self.test_token)
             mock_warning.assert_called()
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_with_invalid_config(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试无效配置的情况。"""
         invalid_config = {'rss_url': 'https://invalid.com/rss'}  # 缺少必要字段
@@ -110,8 +108,8 @@ class TestScheduler:
             self.scheduler.run([invalid_config], self.test_token)
             mock_error.assert_called_with("配置缺少必要字段: {'rss_url': 'https://invalid.com/rss'}")
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_with_exception_in_config(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试配置处理抛出异常的情况。"""
         # Mock RssFetcher 抛出异常
@@ -123,8 +121,8 @@ class TestScheduler:
             self.scheduler.run(self.test_configs[:1], self.test_token)
             mock_error.assert_called()
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
     def test_run_with_duplicate_links(self, mock_api_caller_class, mock_rss_fetcher_class):
         """测试重复链接的处理。"""
         # Mock RssFetcher
@@ -158,9 +156,9 @@ class TestScheduler:
         assert stats['processed_links_count'] == 2
         assert stats['delay_seconds'] == 0.1
     
-    @patch('scheduler.RssFetcher')
-    @patch('scheduler.ApiCaller')
-    @patch('scheduler.time.sleep')
+    @patch('rss_note_writer.scheduler.RssFetcher')
+    @patch('rss_note_writer.scheduler.ApiCaller')
+    @patch('rss_note_writer.scheduler.time.sleep')
     def test_delay_between_requests(self, mock_sleep, mock_api_caller_class, mock_rss_fetcher_class):
         """测试请求之间的延迟。"""
         # Mock RssFetcher

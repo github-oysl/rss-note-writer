@@ -3,9 +3,7 @@ import requests
 import sys
 import os
 from unittest.mock import Mock, patch
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from api_caller import ApiCaller
+from rss_note_writer.api_caller import ApiCaller
 
 class TestApiCaller:
     """
