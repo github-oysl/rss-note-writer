@@ -1,0 +1,23 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# Logs and runtime data
+*.log
+data/processed_links.json
+
+# Environment & secrets
+.env
+
+# Trae IDE temp
+.trae/
