@@ -14,7 +14,6 @@ venv/
 
 # Logs and runtime data
 *.log
-data/processed_links.json
 
 # Environment & secrets
 .env
