@@ -31,7 +31,7 @@ class ApiCaller:
         self.logger = logging.getLogger(__name__)
         self.base_url = "https://get-notes.luojilab.com/voicenotes/web/topics/notes/stream"
 
-    def call_api(self, link: str, topic_id: str, topic_directory_id: str, token: str) -> requests.Response:
+    def call_api(self, link: str, topic_id: str, topic_directory_id: str, token: str, content: str) -> requests.Response:
         """
         调用笔记 API 将链接添加到指定主题。
 
@@ -40,6 +40,7 @@ class ApiCaller:
         - `topic_id: str`：主题 ID
         - `topic_directory_id: str`：主题目录 ID
         - `token: str`：Bearer token 认证（可传入带或不带 'Bearer ' 前缀）
+        - `content: str`：写入的笔记正文内容
 
         返回值：
         - `requests.Response`：HTTP 响应对象
@@ -77,7 +78,7 @@ class ApiCaller:
                     "url": link,
                 }
             ],
-            "content": "",
+            "content": content or "",
             "entry_type": "ai",
             "note_type": "link",
             "source": "web",

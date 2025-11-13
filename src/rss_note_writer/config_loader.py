@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 
@@ -12,19 +13,22 @@ class ConfigLoader:
     - `load_configs`：从 JSON 文件加载 RSS 配置列表
     """
 
-    def __init__(self, config_path: str = 'config/rss_configs.json', env_path: str = '.env'):
+    def __init__(self, config_path: str = None, env_path: str = None):
         """
         初始化 ConfigLoader。
 
         参数：
-        - `config_path: str`：配置文件路径，默认 `config/rss_configs.json`
-        - `env_path: str`：环境文件路径，默认 `.env`
+        - `config_path: str`：配置文件路径，默认使用包目录 `src/rss_note_writer/config/rss_configs.json`
+        - `env_path: str`：环境文件路径，默认使用顶层 `.env`
 
         返回值：
         - 无
         """
-        self.config_path = config_path
-        self.env_path = env_path
+        pkg_dir = Path(__file__).resolve().parent
+        default_config = pkg_dir / 'config' / 'rss_configs.json'
+        default_env = Path.cwd() / '.env'
+        self.config_path = str(config_path) if config_path else str(default_config)
+        self.env_path = str(env_path) if env_path else str(default_env)
 
     def load_token(self) -> str:
         """
@@ -67,8 +71,13 @@ class ConfigLoader:
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"Configuration file not found at {self.config_path}")
 
-        with open(self.config_path, 'r') as f:
-            configs = json.load(f)
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except UnicodeDecodeError:
+            with open(self.config_path, 'r', encoding='utf-8-sig') as f:
+                text = f.read()
+        configs = json.loads(text)
 
         for config in configs:
             if not all(key in config for key in ['rss_url', 'topic_id', 'topic_directory_id']):

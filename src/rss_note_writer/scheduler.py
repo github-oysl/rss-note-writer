@@ -1,6 +1,7 @@
 import time
 import logging
 from typing import List, Dict, Set
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from .rss_fetcher import RssFetcher
 from .api_caller import ApiCaller
@@ -13,23 +14,25 @@ class Scheduler:
     定时调度器：定时从 RSS 源获取链接并调用 API 写入笔记。
     """
 
-    def __init__(self, delay_seconds: int = 10):
+    def __init__(self, delay_seconds: int = 10, max_workers: int = 4):
         """
         初始化调度器。
 
         参数：
         - `delay_seconds: int`：每次 API 调用之间的延迟时间（秒），默认 10 秒
+        - `max_workers: int`：并发写入的最大工作线程数，默认 4
 
         返回值：
         - 无
         """
         self.logger = logging.getLogger(__name__)
         self.delay_seconds = delay_seconds
+        self.max_workers = max_workers
         # 在 run 中按需创建依赖，便于测试中 patch
         self.rss_fetcher = None
         self.api_caller = None
         self.processed_links: Set[str] = set()
-        store_path = Path.cwd() / 'data' / 'processed_links.json'
+        store_path = Path(__file__).resolve().parent / 'data' / 'processed_links.json'
         self.dedup_store = DedupStore(store_path)
 
         if not logging.getLogger().handlers:
@@ -72,11 +75,25 @@ class Scheduler:
                 rss_url = config['rss_url']
                 topic_id = config['topic_id']
                 topic_directory_id = config['topic_directory_id']
+                # 每源最大同步条数，默认 10，最大不超过 200
+                max_links_cfg = config.get('max_links')
+                try:
+                    max_links = int(max_links_cfg) if max_links_cfg is not None else 10
+                except Exception:
+                    max_links = 10
+                if max_links < 1:
+                    max_links = 1
+                if max_links > 200:
+                    max_links = 200
+                # 每源 content，默认模板
+                default_content = "整理这条笔记的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接"
+                content = config.get('content') or default_content
 
                 self.logger.info(f"从 RSS 源获取链接: {rss_url}")
+                self.logger.info(f"本次最大同步条数: {max_links}")
 
-        
-                links = rss_fetcher.fetch_links(rss_url, max_links=10)
+                
+                links = rss_fetcher.fetch_links(rss_url, max_links=max_links)
 
                 if not links:
                     self.logger.warning(f"RSS 源没有获取到链接: {rss_url}")
@@ -85,44 +102,53 @@ class Scheduler:
                 self.logger.info(f"获取到 {len(links)} 个链接")
 
                 processed_count = 0
-                for link in links:
-                    if link in self.processed_links:
-                        self.logger.debug(f"跳过已处理的链接: {link}")
-                        continue
-                    # 写入前持久化去重检查，跨运行避免重复提交
-                    if self.dedup_store.has(topic_id, link):
-                        self.logger.info(f"跳过历史已写入的链接: {link}")
-                        continue
-
-                    try:
-                        self.logger.info(f"处理链接: {link}")
-                        response = api_caller.call_api(
-                            link=link,
-                            topic_id=topic_id,
-                            topic_directory_id=topic_directory_id,
-                            token=token,
+                # 并发执行写入，失败不影响其他链接
+                futures = {}
+                max_workers_cfg = 0
+                try:
+                    max_workers_cfg = int(config.get('max_workers', 0))
+                except Exception:
+                    max_workers_cfg = 0
+                workers = max_workers_cfg or self.max_workers
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    for link in links:
+                        if link in self.processed_links:
+                            self.logger.debug(f"跳过已处理的链接: {link}")
+                            continue
+                        if self.dedup_store.has(topic_id, link):
+                            self.logger.info(f"跳过历史已写入的链接: {link}")
+                            continue
+                        self.logger.info(f"提交写入任务: {link}")
+                        future = executor.submit(
+                            api_caller.call_api,
+                            link,
+                            topic_id,
+                            topic_directory_id,
+                            token,
+                            content,
                         )
-                        if response.ok:
-                            self.logger.info(f"成功添加链接到笔记: {link}")
-                            self.processed_links.add(link)
-                            self.dedup_store.add(topic_id, link)
-                            processed_count += 1
-                            total_processed += 1
-                        else:
-                            self.logger.warning(
-                                f"添加链接失败，状态码: {response.status_code}, 链接: {link}"
-                            )
-                            if response.status_code == 409:
-                                self.logger.info(f"服务端判定为重复，记录到去重存储: {link}")
+                        futures[future] = link
+
+                    for future in as_completed(futures):
+                        link = futures[future]
+                        try:
+                            response = future.result()
+                            if response.ok:
+                                self.logger.info(f"成功添加链接到笔记: {link}")
                                 self.processed_links.add(link)
                                 self.dedup_store.add(topic_id, link)
-
-                        if processed_count < len(links):
-                            self.logger.info(f"等待 {self.delay_seconds} 秒后继续处理下一个链接...")
-                            time.sleep(self.delay_seconds)
-                    except Exception as e:
-                        self.logger.error(f"处理链接失败: {link}, 错误: {str(e)}")
-                        continue
+                                processed_count += 1
+                                total_processed += 1
+                            else:
+                                self.logger.warning(
+                                    f"添加链接失败，状态码: {response.status_code}, 链接: {link}"
+                                )
+                                if response.status_code == 409:
+                                    self.logger.info(f"服务端判定为重复，记录到去重存储: {link}")
+                                    self.processed_links.add(link)
+                                    self.dedup_store.add(topic_id, link)
+                        except Exception as e:
+                            self.logger.error(f"写入任务异常: {link}, 错误: {str(e)}")
 
                 self.logger.info(f"配置处理完成，共处理 {processed_count} 个新链接")
             except Exception as e:

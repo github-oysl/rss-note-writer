@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  rss-note-writer:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      # 可选：启用全局 cron（示例每小时执行一次）
+      # - CRON=0 * * * *
+    volumes:
+      - ./src/rss_note_writer/data:/app/src/rss_note_writer/data
+    command: ["python", "-m", "src.rss_note_writer", "--config-file", "/app/src/rss_note_writer/config/rss_configs.json"]

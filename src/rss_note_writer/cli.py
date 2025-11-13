@@ -6,6 +6,8 @@
 
 import argparse
 import json
+import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +25,7 @@ def create_default_config() -> bool:
     异常：
     - 文件写入异常将向上抛出
     """
-    config_dir = Path.cwd() / "config"
+    config_dir = Path(__file__).resolve().parent / "config"
     config_dir.mkdir(exist_ok=True)
 
     config_file = config_dir / "rss_configs.json"
@@ -111,11 +113,12 @@ def main(argv: Optional[list] = None) -> int:
         ),
     )
 
+    default_config_path = str(Path(__file__).resolve().parent / 'config' / 'rss_configs.json')
     parser.add_argument(
         "--config-file",
         type=str,
-        default="config/rss_configs.json",
-        help="RSS 配置文件路径 (默认: config/rss_configs.json)",
+        default=default_config_path,
+        help=f"RSS 配置文件路径 (默认: {default_config_path})",
     )
 
     parser.add_argument(
@@ -161,9 +164,11 @@ def main(argv: Optional[list] = None) -> int:
             print("配置文件已存在，无需创建")
         return 0
 
-    import rss_note_writer as pkg
+    from .logger import setup_application_logging
+    from .config_loader import ConfigLoader
+    from .scheduler import Scheduler
 
-    logger = pkg.setup_application_logging(level=args.log_level, log_file=args.log_file)
+    logger = setup_application_logging(level=args.log_level, log_file=args.log_file)
 
     logger.info("=== RSS Note Writer 启动 ===")
     logger.info(f"配置文件: {args.config_file}")
@@ -173,7 +178,7 @@ def main(argv: Optional[list] = None) -> int:
         logger.info(f"日志文件: {args.log_file}")
 
     try:
-        config_loader = pkg.ConfigLoader(config_path=args.config_file)
+        config_loader = ConfigLoader(config_path=args.config_file)
         logger.info("加载 RSS 配置...")
         configs = config_loader.load_configs()
         logger.info(f"成功加载 {len(configs)} 个 RSS 配置")
@@ -183,13 +188,56 @@ def main(argv: Optional[list] = None) -> int:
         logger.info("Bearer Token 加载成功")
 
         logger.info("创建调度器...")
-        scheduler = pkg.Scheduler(delay_seconds=args.delay)
-        logger.info("开始 RSS 链接同步...")
-        scheduler.run(configs, token)
-        stats = scheduler.get_stats()
-        logger.info(f"处理统计: {stats}")
-        logger.info("=== RSS Note Writer 完成 ===")
-        return 0
+        scheduler = Scheduler(delay_seconds=args.delay)
+
+        # 检查是否需要启用 cron 调度
+        global_cron = os.getenv('CRON')
+        per_source_cron = [c.get('cron') for c in configs if isinstance(c, dict) and c.get('cron')]
+        if global_cron or per_source_cron:
+            logger.info("检测到 cron 配置，启用定时调度模式")
+            try:
+                from apscheduler.schedulers.background import BackgroundScheduler
+                from apscheduler.triggers.cron import CronTrigger
+            except ImportError:
+                logger.error("缺少 APScheduler 依赖：请安装 'APScheduler' 以启用定时功能")
+                logger.error("安装命令: python -m pip install APScheduler==3.10.4")
+                return 1
+
+            bg = BackgroundScheduler()
+            if per_source_cron:
+                for cfg in configs:
+                    cron_expr = cfg.get('cron') or global_cron
+                    if not cron_expr:
+                        continue
+                    try:
+                        trigger = CronTrigger.from_crontab(cron_expr)
+                        bg.add_job(lambda cfg=cfg: scheduler.run([cfg], token), trigger=trigger, name=f"rss_job_{cfg.get('rss_url','unknown')}")
+                        logger.info(f"已为源添加定时任务: {cfg.get('rss_url')} -> {cron_expr}")
+                    except Exception as e:
+                        logger.error(f"添加定时任务失败: {cfg.get('rss_url')}, 错误: {str(e)}")
+            else:
+                try:
+                    trigger = CronTrigger.from_crontab(global_cron)
+                    bg.add_job(lambda: scheduler.run(configs, token), trigger=trigger, name="rss_job_all")
+                    logger.info(f"已添加全局定时任务: {global_cron}")
+                except Exception as e:
+                    logger.error(f"添加全局定时任务失败: {str(e)}")
+            try:
+                bg.start()
+                logger.info("定时调度已启动，按 Ctrl+C 退出")
+                while True:
+                    time.sleep(1)
+            except (KeyboardInterrupt, SystemExit):
+                logger.info("收到退出信号，正在停止调度...")
+                bg.shutdown(wait=False)
+                return 0
+        else:
+            logger.info("开始 RSS 链接同步...")
+            scheduler.run(configs, token)
+            stats = scheduler.get_stats()
+            logger.info(f"处理统计: {stats}")
+            logger.info("=== RSS Note Writer 完成 ===")
+            return 0
     except FileNotFoundError as e:
         logger.error(f"文件未找到: {e}")
         logger.error("请确保配置文件存在，或使用 --create-config 创建默认配置")

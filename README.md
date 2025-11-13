@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 3. **创建配置文件**
 ```bash
-python -m rss_note_writer --create-config
+python -m src.rss_note_writer --create-config
 ```
 
 ## 🔧 配置
@@ -48,21 +48,30 @@ BEARER_TOKEN=your_bearer_token_here
 
 ### 2. 配置 RSS 源
 
-编辑 `config/rss_configs.json`，添加 RSS 源配置：
+编辑 `src/rss_note_writer/config/rss_configs.json`，添加 RSS 源配置（支持每源最大同步条数 `max_links` 与笔记内容 `content`）：
 ```json
 [
   {
     "rss_url": "https://rss.cnn.com/rss/edition.rss",
     "topic_id": "news_topic",
-    "topic_directory_id": "news_directory"
+    "topic_directory_id": "news_directory",
+    "max_links": 10,
+    "content": "整理这条笔记的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接"
   },
   {
     "rss_url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
     "topic_id": "tech_topic",
-    "topic_directory_id": "tech_directory"
+    "topic_directory_id": "tech_directory",
+    "max_links": 20,
+    "content": "技术热点摘要与要点记录"
   }
 ]
 ```
+
+说明：
+- 每个源都可配置 `max_links`，默认不写时为 10，最大不超过 200（超过将自动按 200 处理）。
+- 每个源都可配置 `content`，用于写入接口的正文内容；默认不写时为：
+  “整理这条笔记的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接”。
 
 ### 3. 高级配置（可选）
 
@@ -90,19 +99,19 @@ LOG_FILE=rss_note_writer.log
 
 ### 快速开始
 ```bash
-# 创建默认配置
-python rss_note_writer.py --create-config
+# 创建默认配置（包目录）
+python -m src.rss_note_writer --create-config
 
-# 运行程序
-python -m rss_note_writer
+# 运行程序（包入口）
+python -m src.rss_note_writer --config-file src/rss_note_writer/config/rss_configs.json
 ```
 
 ### 命令行参数
 ```bash
-python -m rss_note_writer [选项]
+python -m src.rss_note_writer [选项]
 
 选项:
-  --config-file PATH    RSS 配置文件路径 (默认: config/rss_configs.json)
+  --config-file PATH    RSS 配置文件路径 (默认: src/rss_note_writer/config/rss_configs.json)
   --delay SECONDS       API 调用延迟时间（秒）(默认: 10)
   --log-level LEVEL     日志级别: DEBUG, INFO, WARNING, ERROR (默认: INFO)
   --log-file PATH       日志文件路径（可选）
@@ -113,22 +122,46 @@ python -m rss_note_writer [选项]
 ### 使用示例
 ```bash
 # 基本使用
-python -m rss_note_writer
+python -m src.rss_note_writer --config-file src/rss_note_writer/config/rss_configs.json
 
 # 设置 5 秒延迟
-python -m rss_note_writer --delay 5
+python -m src.rss_note_writer --delay 5 --config-file src/rss_note_writer/config/rss_configs.json
 
 # 启用调试日志
-python -m rss_note_writer --log-level DEBUG
+python -m src.rss_note_writer --log-level DEBUG --config-file src/rss_note_writer/config/rss_configs.json
 
 # 输出日志到文件
-python -m rss_note_writer --log-file app.log
+python -m src.rss_note_writer --log-file app.log --config-file src/rss_note_writer/config/rss_configs.json
 
 # 使用自定义配置
-python -m rss_note_writer --config-file my_config.json
+python -m src.rss_note_writer --config-file src/rss_note_writer/config/rss_configs.json
+# 为特定源设置最大同步条数，例如 200：在对应对象中加入 "max_links": 200
 
 # 重新创建配置文件
-python -m rss_note_writer --create-config
+python -m src.rss_note_writer --create-config
+```
+
+### 定时（cron）
+```bash
+# 在 .env 中设置全局 CRON（示例：每小时）
+# CRON=0 * * * *
+
+# 运行（常驻调度模式）
+python -m src.rss_note_writer --config-file src/rss_note_writer/config/rss_configs.json
+
+# 也可以在每个源的配置对象中加入 "cron": "*/5 * * * *"（每 5 分钟）
+```
+
+### Docker 部署
+```bash
+# 构建并启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f rss-note-writer
+
+# 覆盖默认命令示例（可选）
+docker compose run --rm rss-note-writer python -m src.rss_note_writer --log-level DEBUG --config-file /app/src/rss_note_writer/config/rss_configs.json
 ```
 
 ## 🧪 测试
@@ -272,7 +305,7 @@ rss-note-writer/
 ├── src/
 │  └── rss_note_writer/
 │      ├── __init__.py      # 导出顶层 API
-│      ├── __main__.py      # 支持 `python -m rss_note_writer`
+│      ├── __main__.py      # 包入口
 │      ├── cli.py           # 命令行主入口
 │      ├── config_loader.py # 配置加载器
 │      ├── rss_fetcher.py   # RSS 获取器
@@ -281,7 +314,7 @@ rss-note-writer/
 │      ├── logger.py        # 日志系统
 │      └── dedup_store.py   # 去重存储
 ├── tests/                  # 测试目录
-├── config/                 # 配置文件
+├── config/                 # 顶层配置（可选，默认使用包内）
 └── docs/                   # 项目文档
 ```
 
