@@ -123,6 +123,27 @@ class ApiCaller:
             self.logger.error(f"API 调用未知错误: {str(e)}")
             raise
 
+    def validate_auth(self, token: str) -> bool:
+        """
+        函数级注释：对目标服务进行鉴权预检，快速判断当前 token 是否有效。
+        输入：token（可带或不带 'Bearer ' 前缀）
+        输出：布尔值，True 表示通过，False 表示鉴权失败（如 401/403）
+        """
+        try:
+            normalized_token = self._normalize_token(token)
+            headers = {
+                'Authorization': normalized_token,
+                'Accept': 'application/json, text/plain, */*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            }
+            # 选择对写入端点做 HEAD 或 GET 以检测权限；部分服务可能只支持 GET
+            resp = requests.get(self.base_url, headers=headers, timeout=10)
+            self.logger.info(f"鉴权预检响应: {resp.status_code}")
+            return 200 <= resp.status_code < 300
+        except Exception as e:
+            self.logger.error(f"鉴权预检异常: {str(e)}")
+            return False
+
     def _normalize_token(self, token: str) -> str:
         """
         规范化 Authorization token。

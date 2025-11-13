@@ -1,6 +1,7 @@
 import os
 import feedparser
 import logging
+import requests
 from typing import List
 
 
@@ -44,7 +45,10 @@ class RssFetcher:
         self.logger.info(f"开始获取 RSS 链接: {rss_url} -> {normalized_url}")
 
         try:
-            feed = feedparser.parse(normalized_url)
+            self.logger.debug(f"请求 RSS 源: {normalized_url}")
+            resp = requests.get(normalized_url, timeout=10)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
             if not feed or not hasattr(feed, 'entries'):
                 self.logger.warning(f"RSS 源无效或无内容: {rss_url}")
                 return []
@@ -60,8 +64,14 @@ class RssFetcher:
 
             self.logger.info(f"成功获取 {len(links)} 个链接")
             return links
+        except requests.exceptions.Timeout:
+            self.logger.error(f"获取 RSS 超时: {normalized_url}")
+            return []
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"请求 RSS 失败: {normalized_url}, 错误: {str(e)}")
+            return []
         except Exception as e:
-            self.logger.error(f"获取 RSS 链接失败: {rss_url}, 错误: {str(e)}")
+            self.logger.error(f"解析 RSS 失败: {rss_url}, 错误: {str(e)}")
             return []
 
     def _is_valid_url(self, url: str) -> bool:

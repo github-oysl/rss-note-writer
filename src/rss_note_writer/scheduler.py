@@ -74,6 +74,8 @@ class Scheduler:
                 topic_directory_id = config['topic_directory_id']
 
                 self.logger.info(f"从 RSS 源获取链接: {rss_url}")
+
+        
                 links = rss_fetcher.fetch_links(rss_url, max_links=10)
 
                 if not links:
@@ -87,8 +89,10 @@ class Scheduler:
                     if link in self.processed_links:
                         self.logger.debug(f"跳过已处理的链接: {link}")
                         continue
-                    # 历史去重不在预处理阶段拦截，避免测试环境误判；
-                    # 仍保留成功或服务端重复后的持久化记录。
+                    # 写入前持久化去重检查，跨运行避免重复提交
+                    if self.dedup_store.has(topic_id, link):
+                        self.logger.info(f"跳过历史已写入的链接: {link}")
+                        continue
 
                     try:
                         self.logger.info(f"处理链接: {link}")
