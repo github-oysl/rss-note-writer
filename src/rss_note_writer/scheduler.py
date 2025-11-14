@@ -7,6 +7,9 @@ from .rss_fetcher import RssFetcher
 from .api_caller import ApiCaller
 from .logger import setup_application_logging
 from .dedup_store import DedupStore
+import os
+from .repositories import ProcessedLinkRepository, WriteResultRepository, init_db_schema
+from .api_response_parser import extract_ids_from_response_json
 
 
 class Scheduler:
@@ -33,7 +36,22 @@ class Scheduler:
         self.api_caller = None
         self.processed_links: Set[str] = set()
         store_path = Path(__file__).resolve().parent / 'data' / 'processed_links.json'
-        self.dedup_store = DedupStore(store_path)
+        self.dedup_store = None
+        self.db_links_repo = None
+        self.db_results_repo = None
+        # 若启用 DB_URL，则初始化数据库仓库用于去重与结果存储
+        if os.getenv("DB_URL"):
+            try:
+                init_db_schema()
+                self.db_links_repo = ProcessedLinkRepository()
+                self.db_results_repo = WriteResultRepository()
+                self.logger.info("数据库去重与结果存储已启用")
+            except Exception as e:
+                self.logger.warning(f"数据库初始化失败，回退到文件存储: {str(e)}")
+                self.dedup_store = DedupStore(store_path)
+        else:
+            # 未配置数据库时使用本地文件存储
+            self.dedup_store = DedupStore(store_path)
 
         if not logging.getLogger().handlers:
             setup_application_logging()
@@ -115,8 +133,18 @@ class Scheduler:
                         if link in self.processed_links:
                             self.logger.debug(f"跳过已处理的链接: {link}")
                             continue
-                        if self.dedup_store.has(topic_id, link):
-                            self.logger.info(f"跳过历史已写入的链接: {link}")
+                        # 去重判断：优先 DB，其次文件；任一存在则跳过
+                        already_in_db = False
+                        if self.db_links_repo:
+                            try:
+                                already_in_db = self.db_links_repo.has(topic_id, link)
+                            except Exception:
+                                already_in_db = False
+                        if already_in_db:
+                            self.logger.info(f"跳过数据库已记录的链接: {link}")
+                            continue
+                        if self.dedup_store and self.dedup_store.has(topic_id, link):
+                            self.logger.info(f"跳过文件存储已记录的链接: {link}")
                             continue
                         self.logger.info(f"提交写入任务: {link}")
                         future = executor.submit(
@@ -136,17 +164,68 @@ class Scheduler:
                             if response.ok:
                                 self.logger.info(f"成功添加链接到笔记: {link}")
                                 self.processed_links.add(link)
-                                self.dedup_store.add(topic_id, link)
+                                # 记录到 DB 或文件
+                                pl_id = None
+                                if self.db_links_repo:
+                                    try:
+                                        pl_id = self.db_links_repo.add(topic_id, link, status_code=response.status_code, rss_url=rss_url)
+                                    except Exception:
+                                        pl_id = None
+                                if self.dedup_store:
+                                    self.dedup_store.add(topic_id, link)
+                                # 解析响应并记录映射
+                                try:
+                                    resp_json = {}
+                                    try:
+                                        resp_json = response.json()
+                                    except Exception:
+                                        resp_json = {"text": response.text}
+                                    note_id, file_id, extra = extract_ids_from_response_json(resp_json)
+                                    if self.db_results_repo and pl_id:
+                                        self.db_results_repo.record(
+                                            processed_link_id=pl_id,
+                                            raw_response=resp_json,
+                                            note_id=note_id,
+                                            file_id=file_id,
+                                            external_ids=extra,
+                                        )
+                                except Exception as e:
+                                    self.logger.warning(f"响应映射记录失败: {str(e)}")
                                 processed_count += 1
                                 total_processed += 1
                             else:
                                 self.logger.warning(
                                     f"添加链接失败，状态码: {response.status_code}, 链接: {link}"
                                 )
-                                if response.status_code == 409:
+                                if response.status_code in (200, 201, 202, 204, 409):
                                     self.logger.info(f"服务端判定为重复，记录到去重存储: {link}")
                                     self.processed_links.add(link)
-                                    self.dedup_store.add(topic_id, link)
+                                    pl_id = None
+                                    if self.db_links_repo:
+                                        try:
+                                            pl_id = self.db_links_repo.add(topic_id, link, status_code=response.status_code, rss_url=rss_url)
+                                        except Exception:
+                                            pl_id = None
+                                    if self.dedup_store:
+                                        self.dedup_store.add(topic_id, link)
+                                    # 即便重复也可尝试记录响应体（若返回体提供现有 ID）
+                                    try:
+                                        resp_json = {}
+                                        try:
+                                            resp_json = response.json()
+                                        except Exception:
+                                            resp_json = {"text": response.text}
+                                        note_id, file_id, extra = extract_ids_from_response_json(resp_json)
+                                        if self.db_results_repo and pl_id:
+                                            self.db_results_repo.record(
+                                                processed_link_id=pl_id,
+                                                raw_response=resp_json,
+                                                note_id=note_id,
+                                                file_id=file_id,
+                                                external_ids=extra,
+                                            )
+                                    except Exception:
+                                        pass
                         except Exception as e:
                             self.logger.error(f"写入任务异常: {link}, 错误: {str(e)}")
 

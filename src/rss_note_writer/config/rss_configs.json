@@ -9,14 +9,14 @@
     "rss_url": "https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml",
     "topic_id": "2328688",
     "topic_directory_id": "2717188",
-    "max_links": 20,
+    "max_links": 2,
     "content": "整理AI资讯相关的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接"
   },
   {
     "rss_url": "http://43.139.41.82:4000/feeds/MP_WXS_3929002121.rss?limit=200&page=1&title_include=%E6%8B%9B%E8%81%98|%E6%A0%A1%E6%8B%9B|%E7%BC%96%E5%88%B6|&title_exclude=%E5%96%9C%E6%8A%A5|%E5%BC%80%E8%AF%BE",
     "topic_id": "2338449",
     "topic_directory_id": "2730497",
-    "max_links": 200,
+    "max_links": 2,
     "content": "整理这条笔记的核心内容，注意标题 按日期-地点-岗位-招聘人数 设置标题。特别关注招聘相关的信息，课程推广信息 不需要记录"
   }
 ]

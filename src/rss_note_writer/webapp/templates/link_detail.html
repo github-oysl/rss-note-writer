@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>写入详情</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <style>
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body class="p-4">
+  <h2>写入详情 #{{ link_id }}</h2>
+  <div class="mb-3">
+    <a class="btn btn-link" href="/links">返回列表</a>
+  </div>
+
+  {% if data %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-4"><strong>note_id:</strong> {{ data.note_id }}</div>
+        <div class="col-md-4"><strong>file_id:</strong> {{ data.file_id }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">原始响应</div>
+    <div class="card-body">
+      <pre>{{ data.raw_response | tojson(indent=2) }}</pre>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">未找到写入结果</div>
+  {% endif %}
+</body>
+</html>
+

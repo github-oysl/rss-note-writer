@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from .repositories import ConfigRepository, init_db_schema
 
 
 class ConfigLoader:
@@ -68,6 +69,36 @@ class ConfigLoader:
         - `json.JSONDecodeError`：JSON 无效
         - `ValueError`：配置缺少必要键
         """
+        # 优先从数据库读取（检测到 DB_URL 且存在配置数据时）
+        if os.getenv('DB_URL'):
+            try:
+                init_db_schema()
+                repo = ConfigRepository()
+                items = repo.list()
+                if items:
+                    configs = []
+                    for it in items:
+                        cfg = {
+                            'rss_url': it.get('rss_url'),
+                            'topic_id': it.get('topic_id'),
+                            'topic_directory_id': it.get('topic_directory_id'),
+                        }
+                        # 可选字段
+                        if it.get('max_links') is not None:
+                            cfg['max_links'] = it.get('max_links')
+                        if it.get('content'):
+                            cfg['content'] = it.get('content')
+                        if it.get('cron'):
+                            cfg['cron'] = it.get('cron')
+                        configs.append(cfg)
+                    for config in configs:
+                        if not all(key in config for key in ['rss_url', 'topic_id', 'topic_directory_id']):
+                            raise ValueError("Invalid config from DB: missing required keys")
+                    return configs
+            except Exception:
+                # 数据库不可用或无数据，回退到文件
+                pass
+
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"Configuration file not found at {self.config_path}")
 
