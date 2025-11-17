@@ -30,6 +30,7 @@ class RssConfigSource(Base):
     __tablename__ = "rss_config_sources"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     rss_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     topic_id: Mapped[str] = mapped_column(Text, nullable=False)
     topic_directory_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -58,6 +59,7 @@ class ProcessedLink(Base):
     __tablename__ = "processed_links"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     topic_id: Mapped[str] = mapped_column(Text, nullable=False)
     link_url: Mapped[str] = mapped_column(Text, nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -86,9 +88,54 @@ class WriteResult(Base):
     __tablename__ = "write_results"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     processed_link_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     note_id: Mapped[str] = mapped_column(Text, nullable=True)
     file_id: Mapped[str] = mapped_column(Text, nullable=True)
     external_ids: Mapped[dict] = mapped_column(JSONB, nullable=True)
     raw_response: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+class AppUser(Base):
+    """
+    应用用户模型，对应 `app_users` 表。
+
+    字段：
+    - `id`：主键
+    - `external_uid`：外部系统用户ID（如登录响应中的 uid）
+    - `phone`：手机号（可选）
+    - `name`：名称（可选）
+    - `provider`：来源提供方（默认 'get-notes'）
+    - `active`：是否启用
+    - `created_at`：创建时间
+    """
+
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    external_uid: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    phone: Mapped[str] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, default="get-notes")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class UserToken(Base):
+    """
+    用户令牌模型，对应 `user_tokens` 表。
+
+    字段：
+    - `id`：主键
+    - `user_id`：关联应用用户ID
+    - `token`：Bearer Token
+    - `expires_at`：过期时间（可选）
+    - `created_at`：创建时间
+    """
+
+    __tablename__ = "user_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

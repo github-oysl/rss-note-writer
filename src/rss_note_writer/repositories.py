@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import get_session, init_engine
 from sqlalchemy import text
-from .models import Base, RssConfigSource, ProcessedLink, WriteResult
+from .models import Base, RssConfigSource, ProcessedLink, WriteResult, AppUser, UserToken
 
 
 def init_db_schema() -> None:
@@ -24,6 +24,47 @@ def init_db_schema() -> None:
         if not result:
             conn.execute(text("ALTER TABLE processed_links ADD COLUMN rss_url TEXT"))
             conn.commit()
+        # 为三张业务表增加 user_id 列（若不存在），并设置默认值为会话变量
+        for tbl in ("rss_config_sources", "processed_links", "write_results"):
+            has_user_id = conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name=:t AND column_name='user_id'"), {"t": tbl}).fetchone()
+            if not has_user_id:
+                conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN user_id BIGINT"))
+                # 设置默认值依赖会话变量，插入时若未提供将自动填充
+                try:
+                    conn.execute(text(f"ALTER TABLE {tbl} ALTER COLUMN user_id SET DEFAULT (current_setting('app.current_user_id', true))::bigint"))
+                except Exception:
+                    pass
+                conn.commit()
+        # 外键约束（如存在则忽略）
+        for tbl, cname in (("rss_config_sources", "fk_cfg_user"), ("processed_links", "fk_pl_user"), ("write_results", "fk_wr_user")):
+            try:
+                conn.execute(text(f"ALTER TABLE {tbl} ADD CONSTRAINT {cname} FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE"))
+            except Exception:
+                pass
+        # 启用RLS（若未启用）并创建策略（若未存在）
+        for tbl in ("app_users", "user_tokens", "rss_config_sources", "processed_links", "write_results"):
+            try:
+                conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
+            except Exception:
+                pass
+        # 创建策略（存在则忽略异常）
+        policies = [
+            ("app_users", "p_users_select", "FOR SELECT USING (id = current_setting('app.current_user_id', true)::bigint)"),
+            ("user_tokens", "p_tokens_rw", "FOR ALL USING (user_id = current_setting('app.current_user_id', true)::bigint) WITH CHECK (user_id = current_setting('app.current_user_id', true)::bigint)"),
+            ("rss_config_sources", "p_cfg_rw", "FOR ALL USING (user_id = current_setting('app.current_user_id', true)::bigint) WITH CHECK (user_id = current_setting('app.current_user_id', true)::bigint)"),
+            ("processed_links", "p_pl_rw", "FOR ALL USING (user_id = current_setting('app.current_user_id', true)::bigint) WITH CHECK (user_id = current_setting('app.current_user_id', true)::bigint)"),
+            ("write_results", "p_wr_rw", "FOR ALL USING (user_id = current_setting('app.current_user_id', true)::bigint) WITH CHECK (user_id = current_setting('app.current_user_id', true)::bigint)"),
+        ]
+        for tbl, name, clause in policies:
+            try:
+                conn.execute(text(f"CREATE POLICY {name} ON {tbl} {clause}"))
+            except Exception:
+                pass
+        # 为 user_tokens 增加唯一约束，确保每个用户仅有一个 token
+        try:
+            conn.execute(text("ALTER TABLE user_tokens ADD CONSTRAINT uq_user_tokens_user UNIQUE (user_id)"))
+        except Exception:
+            pass
 
 
 class ConfigRepository:
@@ -46,6 +87,7 @@ class ConfigRepository:
         return [
             {
                 "id": r.id,
+                "user_id": getattr(r, "user_id", None),
                 "rss_url": r.rss_url,
                 "topic_id": r.topic_id,
                 "topic_directory_id": r.topic_directory_id,
@@ -191,6 +233,7 @@ class ProcessedLinkRepository:
         return [
             {
                 "id": r.id,
+                "user_id": getattr(r, "user_id", None),
                 "topic_id": r.topic_id,
                 "link_url": r.link_url,
                 "status_code": r.status_code,
@@ -257,8 +300,84 @@ class WriteResultRepository:
         return {
             "id": obj.id,
             "processed_link_id": obj.processed_link_id,
+            "user_id": getattr(obj, "user_id", None),
             "note_id": obj.note_id,
             "file_id": obj.file_id,
             "external_ids": obj.external_ids,
             "raw_response": obj.raw_response,
         }
+
+
+class UserRepository:
+    """
+    用户仓库：创建/查找应用用户。
+    """
+
+    def __init__(self, session: Optional[Session] = None):
+        self.session = session or get_session()
+
+    def get_by_external_uid(self, external_uid: int) -> Optional[Dict[str, Any]]:
+        obj = self.session.execute(select(AppUser).where(AppUser.external_uid == external_uid)).scalar_one_or_none()
+        if not obj:
+            return None
+        return {
+            "id": obj.id,
+            "external_uid": obj.external_uid,
+            "active": obj.active,
+        }
+
+    def upsert_by_external_uid(self, external_uid: int) -> int:
+        obj = self.session.execute(select(AppUser).where(AppUser.external_uid == external_uid)).scalar_one_or_none()
+        if obj:
+            return obj.id
+        rec = AppUser(external_uid=external_uid, active=True)
+        self.session.add(rec)
+        self.session.commit()
+        return rec.id
+
+
+class TokenRepository:
+    """
+    令牌仓库：保存与读取用户令牌。
+    """
+
+    def __init__(self, session: Optional[Session] = None):
+        self.session = session or get_session()
+
+    def save(self, user_id: int, token: str, expires_at: Optional[str] = None) -> int:
+        row = self.session.execute(
+            text(
+                """
+                INSERT INTO user_tokens (user_id, token, expires_at, created_at)
+                VALUES (:uid, :tok, :exp, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET
+                  token = EXCLUDED.token,
+                  expires_at = EXCLUDED.expires_at,
+                  created_at = EXCLUDED.created_at
+                RETURNING id
+                """
+            ),
+            {"uid": int(user_id), "tok": token, "exp": expires_at},
+        ).fetchone()
+        self.session.commit()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def latest_for_user(self, user_id: int) -> Optional[str]:
+        obj = self.session.execute(select(UserToken).where(UserToken.user_id == user_id).order_by(UserToken.id.desc())).scalar_one_or_none()
+        return obj.token if obj else None
+
+
+def backfill_all_to_user(session: Session, user_id: int) -> None:
+    """
+    将当前数据库中的业务数据与指定用户建立关联。
+
+    参数：
+    - `session: Session`：数据库会话
+    - `user_id: int`：目标用户ID
+
+    返回值：
+    - 无
+    """
+    for tbl in ("rss_config_sources", "processed_links", "write_results"):
+        session.execute(text(f"UPDATE {tbl} SET user_id = :uid"), {"uid": int(user_id)})
+    session.commit()

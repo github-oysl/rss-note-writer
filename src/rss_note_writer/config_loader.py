@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from .repositories import ConfigRepository, init_db_schema
+from .repositories import ConfigRepository, init_db_schema, UserRepository, TokenRepository
 
 
 class ConfigLoader:
@@ -45,9 +45,51 @@ class ConfigLoader:
         - `FileNotFoundError`：`.env` 文件不存在
         - `KeyError`：缺少 `BEARER_TOKEN`
         """
+        # 优先从数据库读取（如存在）
+        if os.getenv('DB_URL'):
+            try:
+                init_db_schema()
+                # 根据 .env 的 token 推断当前用户；若无，则取任意活跃用户的最新令牌
+                env_token = None
+                if os.path.exists(self.env_path):
+                    load_dotenv(self.env_path)
+                    env_token = os.getenv('BEARER_TOKEN')
+                if env_token:
+                    # 从 env token 解码 uid
+                    import base64, json
+                    def _decode_uid(tok: str):
+                        try:
+                            tok = tok[7:] if tok.startswith('Bearer ') else tok
+                            p = tok.split('.')[1]
+                            pad = '=' * (-len(p) % 4)
+                            obj = json.loads(base64.urlsafe_b64decode(p + pad).decode('utf-8'))
+                            return int(obj.get('uid'))
+                        except Exception:
+                            return None
+                    uid = _decode_uid(env_token)
+                    if uid is not None:
+                        urepo = UserRepository()
+                        user = urepo.get_by_external_uid(uid)
+                        if user:
+                            tok = TokenRepository().latest_for_user(user_id=user['id'])
+                            if tok:
+                                return tok
+                # 回退：取第一个用户的最新令牌
+                urepo = UserRepository()
+                # 简单查询：取ID最小的用户
+                from sqlalchemy import select
+                from .models import AppUser
+                sess = urepo.session
+                u = sess.execute(select(AppUser).order_by(AppUser.id.asc())).scalar_one_or_none()
+                if u:
+                    tok = TokenRepository(sess).latest_for_user(user_id=u.id)
+                    if tok:
+                        return tok
+            except Exception:
+                pass
+        # 回退到 .env
         if not os.path.exists(self.env_path):
             raise FileNotFoundError(f"No .env file found at {self.env_path}")
-
         load_dotenv(self.env_path)
         token = os.getenv('BEARER_TOKEN')
         if not token:

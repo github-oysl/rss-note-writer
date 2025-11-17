@@ -1,3 +1,11 @@
+Metadata-Version: 2.4
+Name: rss-note-writer
+Version: 0.1.0
+Summary: 从 RSS 源获取文章链接并写入笔记应用的工具
+Author: Project Maintainer
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
 # RSS Note Writer
 
 自动从 RSS 源获取文章链接并添加到笔记应用的 Python 工具。

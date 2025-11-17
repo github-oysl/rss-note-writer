@@ -1,0 +1,6 @@
+INSERT INTO rss_config_sources (rss_url, topic_id, topic_directory_id, max_links, content, cron, active, created_at, updated_at, user_id) VALUES 
+('https://quaily.com/op7418/feed/atom', '2328688', '2717188', 10, '整理AI资讯相关的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接', NULL, True, '2025-11-14 04:47:16.359509+00:00', '2025-11-14 04:47:16.359509+00:00', NULL),
+('https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml', '2328688', '2717188', 2, '整理AI资讯相关的核心内容，注意标题 按发布日期-主题-领域-内容进行拼接', NULL, True, '2025-11-14 04:47:16.583475+00:00', '2025-11-14 04:47:16.583475+00:00', NULL),
+('http://43.139.41.82:4000/feeds/MP_WXS_3929002121.rss?limit=200&page=1&title_include=%E6%8B%9B%E8%81%98|%E6%A0%A1%E6%8B%9B|%E7%BC%96%E5%88%B6|&title_exclude=%E5%96%9C%E6%8A%A5|%E5%BC%80%E8%AF%BE', '2338449', '2730497', 2, '整理这条笔记的核心内容，注意标题 按日期-地点-岗位-招聘人数 设置标题。特别关注招聘相关的信息，课程推广信息 不需要记录', NULL, True, '2025-11-14 04:47:17.387265+00:00', '2025-11-14 04:47:17.387265+00:00', NULL),
+('http://43.139.41.82:1200/gov/zhengce/zuixin', '2328688', '2717188', 1, 'j', '', True, '2025-11-14 10:56:34.149119+00:00', '2025-11-14 10:56:34.149119+00:00', NULL)
+ON CONFLICT (rss_url) DO UPDATE SET topic_id=EXCLUDED.topic_id, topic_directory_id=EXCLUDED.topic_directory_id, max_links=EXCLUDED.max_links, content=EXCLUDED.content, cron=EXCLUDED.cron, active=EXCLUDED.active, updated_at=EXCLUDED.updated_at;

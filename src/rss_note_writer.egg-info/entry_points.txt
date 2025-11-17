@@ -1,0 +1,2 @@
+[console_scripts]
+rss-note-writer = rss_note_writer.cli:main

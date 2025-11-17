@@ -1,0 +1,20 @@
+{
+  "tables": {
+    "app_users": {
+      "count": 0,
+      "error": "canceling statement due to statement timeout\n"
+    },
+    "user_tokens": {
+      "count": 2
+    },
+    "rss_config_sources": {
+      "count": 4
+    },
+    "processed_links": {
+      "count": 202
+    },
+    "write_results": {
+      "count": 13
+    }
+  }
+}

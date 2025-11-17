@@ -18,9 +18,6 @@ def get_db_url() -> str:
         "DB_URL",
         "postgresql://postgres:st6zv2cx@dbconn.sealosgzg.site:49243/postgres",
     )
-    # 兼容可能传入的 `?directConnection=true` 非标准参数，去除查询串
-    if "?" in url and url.startswith("postgresql://"):
-        url = url.split("?")[0]
     return url
 
 
@@ -36,7 +33,8 @@ def init_engine() -> None:
     """
     global _ENGINE, _SessionLocal
     if _ENGINE is None:
-        _ENGINE = create_engine(get_db_url(), pool_pre_ping=True)
+        timeout = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
+        _ENGINE = create_engine(get_db_url(), pool_pre_ping=True, connect_args={"connect_timeout": timeout})
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_ENGINE)
 
 
