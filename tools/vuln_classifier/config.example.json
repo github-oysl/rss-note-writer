@@ -1,0 +1,23 @@
+{
+  "columns": {
+    "plugin_output": "插件输出",
+    "id": "ID编号",
+    "ip_or_domain": "IP/域名",
+    "title": "漏洞标题",
+    "severity": "工单漏洞等级",
+    "related_asset": "关联资产"
+  },
+  "high_levels": ["高危", "超危", "严重", "紧急", "危急"],
+  "systems": [
+    { "name": "系统A", "ips": ["10.132.98.111", "10.132.98.112"] },
+    { "name": "系统B", "ips": ["example.com"] }
+  ],
+  "iap_titles": [
+    "IAP 相关漏洞示例标题1",
+    "IAP 相关漏洞示例标题2"
+  ],
+  "iap_subpackage_patterns": [
+    "tomcat-embed-core-*.jar",
+    "spring-webmvc-*.jar"
+  ]  
+}

@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 
 app = FastAPI(title="RSS Note Writer 管理界面")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-secret"))
 
 
 def ensure_db() -> None:
@@ -181,8 +183,11 @@ async def configs_page(request: Request):
     配置管理页面：展示配置列表与新增表单。
     """
     ensure_db()
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login", status_code=303)
     repo = ConfigRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     items = repo.list()
     has_running = False
     for it in items:
@@ -207,7 +212,8 @@ async def configs_create(
     """
     ensure_db()
     repo = ConfigRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     repo.upsert(
         {
             "rss_url": rss_url,
@@ -230,7 +236,8 @@ async def configs_delete(config_id: int = Form(...)):
     """
     ensure_db()
     repo = ConfigRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     repo.delete(config_id)
     _reload_bg_scheduler()
     return RedirectResponse(url="/configs", status_code=303)
@@ -263,7 +270,8 @@ async def configs_edit_page(request: Request, config_id: int):
     """
     ensure_db()
     repo = ConfigRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     item = repo.get(config_id)
     return templates.TemplateResponse("config_edit.html", {"request": request, "item": item, "config_id": config_id})
 
@@ -284,7 +292,8 @@ async def configs_update(
     """
     ensure_db()
     repo = ConfigRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     payload = {}
     if rss_url is not None:
         payload["rss_url"] = rss_url
@@ -321,15 +330,15 @@ async def auth_check(request: Request):
 @app.get("/auth/login", response_class=HTMLResponse)
 async def auth_login(request: Request):
     """
-    登录引导页：尝试嵌入第三方登录页面，并提供令牌保存表单。
+    已移除嵌入页，重定向到手机号登录页。
     """
-    return templates.TemplateResponse("auth_login.html", {"request": request})
+    return RedirectResponse(url="/login", status_code=303)
 
 
 @app.post("/auth/save_token")
 async def auth_save_token(token: str = Form(...)):
     """
-    保存登录后获取的 `Bearer Token` 至 `.env` 并返回配置页面。
+    保存登录后获取的 `Bearer Token` 至 `.env` 并返回配置页面。（保留兼容，不再作为主登录方式）
     """
     _save_token_to_env(token)
     try:
@@ -413,8 +422,11 @@ async def links_page(
     写入数据查看页面：按条件过滤，展示分页列表。
     """
     ensure_db()
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login", status_code=303)
     repo = ProcessedLinkRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     filters = {}
     if topic_id:
         filters["topic_id"] = topic_id
@@ -436,7 +448,8 @@ async def link_detail(request: Request, link_id: int):
     """
     ensure_db()
     repo = WriteResultRepository()
-    _apply_rls_session(repo.session)
+    if not _apply_user_session_from_request(repo.session, request):
+        _apply_rls_session(repo.session)
     data = repo.by_processed_link(link_id)
     return templates.TemplateResponse("link_detail.html", {"request": request, "data": data, "link_id": link_id})
 
@@ -594,6 +607,22 @@ def _apply_rls_session(session) -> None:
             session.execute(text("SET app.current_user_id = :id"), {"id": int(user_id)})
     except Exception:
         pass
+
+def _apply_user_session_from_request(session, request: Request) -> bool:
+    """
+    根据会话中的 `user_id` 设置 RLS 上下文。
+
+    返回值:
+    - `bool`: True 表示已设置；False 表示未设置
+    """
+    try:
+        uid = request.session.get("user_id")
+        if uid:
+            session.execute(text("SET app.current_user_id = :id"), {"id": int(uid)})
+            return True
+    except Exception:
+        pass
+    return False
 @app.get("/admin/db_stats")
 async def admin_db_stats(verbose: bool = False):
     """
@@ -681,3 +710,36 @@ async def auth_auto_set_token(request: Request):
         return JSONResponse({"ok": True, "user_id": user_id})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """
+    手机号登录页面。
+    """
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/login")
+async def login_submit(request: Request, phone: str = Form(...)):
+    """
+    手机号登录提交：手机号存在于用户列表则登录成功，否则失败。
+    """
+    ensure_db()
+    repo_user = UserRepository()
+    user = repo_user.get_by_phone(phone)
+    if not user:
+        return templates.TemplateResponse("login.html", {"request": request, "error": "手机号不存在，登录失败"}, status_code=401)
+    request.session["user_id"] = int(user["id"])
+    request.session["phone"] = phone
+    return RedirectResponse(url="/configs", status_code=303)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    """
+    注销当前登录。
+    """
+    try:
+        request.session.clear()
+    except Exception:
+        pass
+    return RedirectResponse(url="/login", status_code=303)

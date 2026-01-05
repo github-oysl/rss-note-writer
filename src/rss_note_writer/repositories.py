@@ -326,6 +326,26 @@ class UserRepository:
             "active": obj.active,
         }
 
+    def get_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
+        """
+        根据手机号查询用户。
+
+        参数:
+        - `phone: str`
+
+        返回值:
+        - `Optional[Dict]`: 用户字典或 None
+        """
+        obj = self.session.execute(select(AppUser).where(AppUser.phone == phone)).scalar_one_or_none()
+        if not obj:
+            return None
+        return {
+            "id": obj.id,
+            "phone": obj.phone,
+            "external_uid": obj.external_uid,
+            "active": obj.active,
+        }
+
     def upsert_by_external_uid(self, external_uid: int) -> int:
         obj = self.session.execute(select(AppUser).where(AppUser.external_uid == external_uid)).scalar_one_or_none()
         if obj:
